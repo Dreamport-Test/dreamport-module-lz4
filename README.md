@@ -1,6 +1,6 @@
 # Dreamport module: LZ4
 
-A fork of [Dreamport-Test/dreamport-module](https://github.com/Dreamport-Test/dreamport-module) that
+A module, made from [Dreamport-Test/dreamport-module](https://github.com/Dreamport-Test/dreamport-module), that
 offers the decoders `lz4` (one LZ4 frame) and `lz4block` (one raw LZ4 block that fills its output exactly).
 It declares no reader and imports nothing. Both are Rust translations of Somnium's own C# decoders
 (`DreamportLz4Frame`, `DreamportLz4Block`, `DreamportXxHash32`), checked byte for byte against them. It is not
