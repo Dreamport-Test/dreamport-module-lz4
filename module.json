@@ -1,1 +1,1 @@
-{ "abi": 2, "decoders": ["example"] }
+{ "abi": 2, "decoders": ["lz4", "lz4block"] }

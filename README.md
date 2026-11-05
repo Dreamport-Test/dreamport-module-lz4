@@ -1,4 +1,14 @@
-# Dreamport module (base)
+# Dreamport module: LZ4
+
+A fork of [Dreamport-Test/dreamport-module](https://github.com/Dreamport-Test/dreamport-module) that
+offers the decoders `lz4` (one LZ4 frame) and `lz4block` (one raw LZ4 block that fills its output exactly).
+It declares no reader and imports nothing. Both are Rust translations of Somnium's own C# decoders
+(`DreamportLz4Frame`, `DreamportLz4Block`, `DreamportXxHash32`), checked byte for byte against them. It is not
+the reference LZ4 library's code.
+
+What follows is the base's description.
+
+---
 
 A **Dreamport module** is code a Dreamport world can ask Somnium to use when it reads a game's files. It is
 a WebAssembly module that offers **decoders** (bytes in, bytes out), **readers** (it lists the entries of
@@ -120,8 +130,23 @@ cargo build --release --target wasm32-unknown-unknown
 The result is `target/wasm32-unknown-unknown/release/dreamport_module.wasm`. Use no crate that needs an
 import (no `wasm-bindgen`, no WASI).
 
-## The example decoder
 
-`src/lib.rs` offers the decoder `example`: it accepts an input exactly as long as the output and copies it.
-Replace `decode` with your own decoder. The example declares no reader; a reader adds `dp_list` and
-`dp_output` and reads its container through `host::Container`.
+## This fork's decoders
+
+`src/lib.rs` exports the ABI; `src/frame.rs`, `src/block.rs` and `src/xxhash32.rs` are one Rust file per C# file
+of the decoders they translate. A frame's descriptor and every checksum it carries are checked, its blocks may be
+no larger than it declares, nothing may follow its end, and a frame or block that would write past its output is
+refused, never followed.
+
+`dp_decode` is not told which name the host asked for, so the input decides: an input that starts with the LZ4
+frame magic (`04 22 4D 18`) is decoded as a frame, anything else as a raw block. A whole raw block can never
+start with those bytes (its first token would copy a match from before the output's start), so every input the C#
+`lz4` or `lz4block` decoder accepts is decoded the same here. The difference is only in what both refuse: a
+valid frame handed over as `lz4block`, or a valid raw block as `lz4`, is decoded, where the named C# decoder
+refuses it. A frame that declares no size and holds fewer bytes than the output is refused (-1), as the ABI asks
+for exactly `out_len` bytes; the C# decoder returns the shorter length, which the host also refuses.
+
+Measured 2026-11-05 in Wasmtime 48 from .NET 10, with the client's memory and time limits: byte-identical to
+the C# decoders on every LZ4 frame of a shipped Bethesda game's archives (the 12 compressed `.bsa` of Skyrim
+Special Edition: 74,616 frames, about 19 GiB decoded), on the 5,391 raw LZ4 blocks of a shipped Unity game's
+284 bundles, and on the C# suite's own inputs and damaged copies of them, refusals included.

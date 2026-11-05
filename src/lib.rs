@@ -1,7 +1,10 @@
-//! A Dreamport module: bytes in, bytes out. See README.md for the ABI. The example offers a decoder and no reader,
-//! so it imports nothing; `host` is what a reader uses to read its container.
+//! Somnium's LZ4 decoders as a WebAssembly module (ABI v2): `lz4`, one LZ4 frame, and `lz4block`, one raw LZ4 block
+//! that fills the output exactly. A translation of `dreamport/contract/Decode/DreamportLz4Frame.cs`,
+//! `DreamportLz4Block.cs` and `DreamportXxHash32.cs`. It offers no reader and imports nothing.
 
-pub mod host;
+mod block;
+mod frame;
+mod xxhash32;
 
 use std::alloc::{alloc, dealloc, Layout};
 
@@ -50,11 +53,13 @@ pub extern "C" fn dp_decode(in_ptr: u32, in_len: u32, out_ptr: u32, out_len: u32
     wrote
 }
 
-/// The example decoder: an input exactly as long as the output is copied; anything else is refused.
+/// ABI v2 gives `dp_decode` no decoder name, so the input says which: a frame starts with the LZ4 magic, and a whole
+/// raw block never can (its first token would copy a match from before the output's start).
 fn decode(input: &[u8], output: &mut [u8]) -> i64 {
-    if input.len() != output.len() {
-        return CORRUPT;
+    let wrote = if frame::starts_one(input) { frame::into(input, output) } else { block::whole(input, output) };
+    if wrote == output.len() as i64 {
+        wrote
+    } else {
+        CORRUPT
     }
-    output.copy_from_slice(input);
-    output.len() as i64
 }
