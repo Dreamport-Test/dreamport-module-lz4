@@ -16,15 +16,16 @@ one container, such as an Unreal `.pak`), or both, in one `.wasm` with one SHA-2
 client runs it **isolated**: it cannot open files, use the network or see anything of the player's machine.
 A reader can read the one container it is listing, through the host, and nothing else.
 
-This repository is the base. **To make a module, fork it**, put your code in `src/`, list the names it
-offers in `module.json`, and push a tag of your own name (`v1-lz4`, ...). The release workflow builds `module.wasm` and
-publishes it with its SHA-256.
+This repository is the base. **To make a module, fork it**, put your code in `src/`, say what it offers in
+`dp_describe` and `module.json`, and push a tag of your own name (`v1-lz4`, ...). The release workflow builds
+`module.wasm` and publishes it with its SHA-256.
 
-A world's pattern names a module by **its fork, its release tag and the SHA-256 of `module.wasm`**, once per
-source, with every name it uses joined by `+`:
+**Somnium keeps no list of formats.** A module answers the names its author chooses, `oodle`, `bsa` or a format
+Somnium has never heard of, and a world can use it without Somnium updating anything. A world's pattern names a
+module by **its repository, its release tag and the SHA-256 of `module.wasm`**, on each source that uses it:
 
 ```
-module=unrealpak+oodle:Owner/repo@tag#sha256
+module=Owner/repo@tag#sha256
 ```
 
 The client asks the player before downloading it, keeps one copy per SHA-256, and refuses a file whose hash
@@ -32,29 +33,32 @@ differs. A module you change gets a new tag and a new hash; patterns that name t
 
 > Test repository (2026-11): a prototype of the design, not a Somnium service.
 
-## The ABI (version 3)
+## The ABI (version 4)
 
 `module.json`:
 
 ```json
-{ "abi": 3, "decoders": ["oodle"], "readers": ["unrealpak"] }
+{ "abi": 4, "decoders": ["oodle"], "readers": ["unrealpak"] }
 ```
 
-`decoders` and `readers` are the names a pattern asks for; each must be one Somnium knows. The client checks
-that every listed name has its export: `dp_decode` for decoders, `dp_list` for readers. The host runs only
-version 3: `dp_abi` must answer 3.
+`decoders` and `readers` are the names the module answers, any you choose: lowercase letters, digits and inner
+hyphens, at most 32 characters. A source's `reader` in a pattern is one of them (or one Somnium ships), and each
+entry a reader lists names its decoder. `module.json` is for people and for the module search; the client trusts
+only what the module itself says in `dp_describe`, since the hash covers the `.wasm` and not `module.json`, so keep
+the two the same. The host runs only version 4: `dp_abi` must answer 4.
 
 ### Exports
 
 | Export | Signature | Meaning |
 |---|---|---|
 | `memory` | memory | the module's memory |
-| `dp_abi` | `() -> i32` | 3 |
+| `dp_abi` | `() -> i32` | 4 |
+| `dp_describe` | `() -> i64` | writes `{"readers":[...],"decoders":[...]}` (UTF-8 JSON, at most 64 KiB) at `dp_output()` and returns its length |
 | `dp_alloc` | `(len: u32) -> u32` | a block of `len` bytes in the module's memory, 16-byte aligned; 0 when it cannot |
 | `dp_free` | `(ptr: u32, len: u32)` | gives back a block from `dp_alloc`, with the same `len` |
 | `dp_decode` | `(name_ptr: u32, name_len: u32, in_ptr: u32, in_len: u32, out_ptr: u32, out_len: u32) -> i64` | decodes `in_len` bytes into exactly `out_len` bytes with the decoder named (UTF-8, one of `decoders`); returns `out_len`, or a negative refusal |
 | `dp_list` | `(container_len: i64) -> i64` | lists the one container the host has open; returns the listing's length in bytes, or a negative refusal |
-| `dp_output` | `() -> i32` | where the listing of the last `dp_list` lies; valid until the next `dp_list` |
+| `dp_output` | `() -> i32` | where the bytes of the last `dp_describe` or `dp_list` lie; valid until the next of either |
 
 `dp_decode`'s input and output blocks must not overlap, and a refused call must leave zeros in the output.
 Refusals are negative: -1 corrupt, -2 not supported (a decoder name it does not offer, encrypted, unknown
@@ -103,19 +107,19 @@ container only if the pattern selects that entry.
    of yours needs another owner.
 2. **Write your code** in `src/`: `decode` for a decoder, `dp_list` with `host::Container` for a reader. Keep
    `rust-toolchain.toml` as it is, so everyone builds with the same compiler.
-3. **List what it offers** in `module.json`. Each name must be one Somnium knows:
-   - readers: `zip`, `file`, `unrealpak`, `iostore`, `bsa`, `scs`, `unityfs`, `dat2`, `mpq`, `n64`;
-   - decoders: `zlib`, `deflate`, `lz4`, `lz4block`, `oodle`.
-
-   A source may take a module only where its reader allows it: `unrealpak`, `iostore`, `file`, `bsa` and `unityfs` today.
+3. **Say what it offers**, the same in `dp_describe` (in `src/lib.rs`) and in `module.json`: the readers and decoders
+   it answers, by names you choose. A reader can be a format Somnium has never heard of; a world names it as its
+   source's `reader`.
 4. **Push a tag with your own name**, such as `v1-lz4`, never a bare `v1`. A fork inherits the base's tags, so `v1`
    already exists in your fork and pushing it again builds nothing.
 5. **Take the SHA-256 from the release**, from `module.wasm.sha256` beside `module.wasm`, not from your own build.
    GitHub builds on Linux; a build on Windows differs by a few bytes of file paths inside panic messages, so its
    hash is not the one players download. Test the released file, not your local one.
-6. **Name it in a pattern** with that tag and that hash: `module=<names>:<you>/<repo>@<tag>#<sha256>`. One module
-   answers each name in a pattern; two forks can serve one source when they answer different names (for example
-   a `bsa` reader from one fork and `lz4` from another).
+6. **Add the topic `dreamport-module`** to your repository (About, the gear, Topics), so Somnium's module search finds
+   it. GitHub does not copy topics to forks or to repositories made from a template.
+7. **Name it in a pattern** with that tag and that hash: `module=<you>/<repo>@<tag>#<sha256>`. A source may name
+   several modules (for example a `bsa` reader from one and an `lz4` decoder from another); two different modules of
+   one pattern may not answer the same name.
 
 **You are responsible for your module.** Somnium does not write, review or host modules: it only runs, isolated,
 the exact file a pattern names by its hash.

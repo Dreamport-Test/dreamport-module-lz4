@@ -1,4 +1,4 @@
-//! Somnium's LZ4 decoders as a WebAssembly module (ABI v3): `lz4`, one LZ4 frame, and `lz4block`, one raw LZ4 block
+//! Somnium's LZ4 decoders as a WebAssembly module (ABI v4): `lz4`, one LZ4 frame, and `lz4block`, one raw LZ4 block
 //! that fills the output exactly. A translation of `dreamport/contract/Decode/DreamportLz4Frame.cs`,
 //! `DreamportLz4Block.cs` and `DreamportXxHash32.cs`. It offers no reader and imports nothing.
 
@@ -8,7 +8,7 @@ mod xxhash32;
 
 use std::alloc::{alloc, dealloc, Layout};
 
-const ABI_VERSION: u32 = 3;
+const ABI_VERSION: u32 = 4;
 const ALIGN: usize = 16;
 const CORRUPT: i64 = -1;
 const UNSUPPORTED: i64 = -2;
@@ -66,4 +66,17 @@ fn decode(name: &[u8], input: &[u8], output: &mut [u8]) -> i64 {
     } else {
         CORRUPT
     }
+}
+
+const DESCRIPTION: &[u8] = br#"{"readers":[],"decoders":["lz4","lz4block"]}"#;
+
+/// What this module answers, in its own words: the host routes these names to it and keeps no list of its own.
+#[no_mangle]
+pub extern "C" fn dp_describe() -> i64 {
+    DESCRIPTION.len() as i64
+}
+
+#[no_mangle]
+pub extern "C" fn dp_output() -> u32 {
+    DESCRIPTION.as_ptr() as usize as u32
 }
