@@ -17,7 +17,7 @@ client runs it **isolated**: it cannot open files, use the network or see anythi
 A reader can read the one container it is listing, through the host, and nothing else.
 
 This repository is the base. **To make a module, fork it**, put your code in `src/`, list the names it
-offers in `module.json`, and push a tag (`v1`, `v2`, ...). The release workflow builds `module.wasm` and
+offers in `module.json`, and push a tag of your own name (`v1-lz4`, ...). The release workflow builds `module.wasm` and
 publishes it with its SHA-256.
 
 A world's pattern names a module by **its fork, its release tag and the SHA-256 of `module.wasm`**, once per
@@ -32,33 +32,33 @@ differs. A module you change gets a new tag and a new hash; patterns that name t
 
 > Test repository (2026-11): a prototype of the design, not a Somnium service.
 
-## The ABI (version 2)
+## The ABI (version 3)
 
 `module.json`:
 
 ```json
-{ "abi": 2, "decoders": ["oodle"], "readers": ["unrealpak"] }
+{ "abi": 3, "decoders": ["oodle"], "readers": ["unrealpak"] }
 ```
 
 `decoders` and `readers` are the names a pattern asks for; each must be one Somnium knows. The client checks
-that every listed name has its export: `dp_decode` for decoders, `dp_list` for readers. A module with no
-reader behaves exactly like a version 1 module.
+that every listed name has its export: `dp_decode` for decoders, `dp_list` for readers. The host runs only
+version 3: `dp_abi` must answer 3.
 
 ### Exports
 
 | Export | Signature | Meaning |
 |---|---|---|
 | `memory` | memory | the module's memory |
-| `dp_abi` | `() -> i32` | 2 |
+| `dp_abi` | `() -> i32` | 3 |
 | `dp_alloc` | `(len: u32) -> u32` | a block of `len` bytes in the module's memory, 16-byte aligned; 0 when it cannot |
 | `dp_free` | `(ptr: u32, len: u32)` | gives back a block from `dp_alloc`, with the same `len` |
-| `dp_decode` | `(in_ptr: u32, in_len: u32, out_ptr: u32, out_len: u32) -> i64` | decodes `in_len` bytes into exactly `out_len` bytes; returns `out_len`, or a negative refusal |
+| `dp_decode` | `(name_ptr: u32, name_len: u32, in_ptr: u32, in_len: u32, out_ptr: u32, out_len: u32) -> i64` | decodes `in_len` bytes into exactly `out_len` bytes with the decoder named (UTF-8, one of `decoders`); returns `out_len`, or a negative refusal |
 | `dp_list` | `(container_len: i64) -> i64` | lists the one container the host has open; returns the listing's length in bytes, or a negative refusal |
 | `dp_output` | `() -> i32` | where the listing of the last `dp_list` lies; valid until the next `dp_list` |
 
 `dp_decode`'s input and output blocks must not overlap, and a refused call must leave zeros in the output.
-Refusals are negative: -1 corrupt, -2 not supported (encrypted, unknown version, unknown codec), -3 too
-large, -5 bad arguments. The client gives each call a time limit and caps the module's memory; a module that
+Refusals are negative: -1 corrupt, -2 not supported (a decoder name it does not offer, encrypted, unknown
+version, unknown codec), -3 too large, -5 bad arguments. The client gives each call a time limit and caps the module's memory; a module that
 traps or runs out of time is treated as a refusal.
 
 ### The one import, for readers only
@@ -138,15 +138,12 @@ of the decoders they translate. A frame's descriptor and every checksum it carri
 no larger than it declares, nothing may follow its end, and a frame or block that would write past its output is
 refused, never followed.
 
-`dp_decode` is not told which name the host asked for, so the input decides: an input that starts with the LZ4
-frame magic (`04 22 4D 18`) is decoded as a frame, anything else as a raw block. A whole raw block can never
-start with those bytes (its first token would copy a match from before the output's start), so every input the C#
-`lz4` or `lz4block` decoder accepts is decoded the same here. The difference is only in what both refuse: a
-valid frame handed over as `lz4block`, or a valid raw block as `lz4`, is decoded, where the named C# decoder
-refuses it. A frame that declares no size and holds fewer bytes than the output is refused (-1), as the ABI asks
+`dp_decode` decodes with the decoder the host names: `lz4` reads one frame, `lz4block` one raw block, and any
+other name is refused (-2). A valid frame handed over as `lz4block`, or a valid raw block as `lz4`, is refused,
+as the C# decoder of that name refuses it. A frame that declares no size and holds fewer bytes than the output is refused (-1), as the ABI asks
 for exactly `out_len` bytes; the C# decoder returns the shorter length, which the host also refuses.
 
-Measured 2026-11-05 in Wasmtime 48 from .NET 10, with the client's memory and time limits: byte-identical to
+Measured 2026-11-06 at ABI v3, in Wasmtime 48 from .NET 10, with the client's memory and time limits: byte-identical to
 the C# decoders on every LZ4 frame of a shipped Bethesda game's archives (the 12 compressed `.bsa` of Skyrim
 Special Edition: 74,616 frames, about 19 GiB decoded), on the 5,391 raw LZ4 blocks of a shipped Unity game's
 284 bundles, and on the C# suite's own inputs and damaged copies of them, refusals included.

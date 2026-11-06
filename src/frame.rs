@@ -10,10 +10,6 @@ const DESCRIPTOR_AT: usize = 4;
 const UNCOMPRESSED: u32 = 0x8000_0000;
 const REFUSED: i64 = -1;
 
-pub fn starts_one(input: &[u8]) -> bool {
-    input.len() >= 4 && word(input, 0) == MAGIC
-}
-
 /// The bytes written, which only a frame that declares no size may leave short of the output; or -1.
 pub fn into(input: &[u8], output: &mut [u8]) -> i64 {
     if input.len() < 7 || word(input, 0) != MAGIC {
