@@ -1,4 +1,29 @@
-# DreamModule (base)
+# Dreamport module: LZ4
+
+A fork of [SomniumSpace/dreamport](https://github.com/SomniumSpace/dreamport), that
+offers the decoders `lz4` (one LZ4 frame) and `lz4block` (one raw LZ4 block that fills its output exactly).
+It declares no reader and imports nothing. Both are Rust translations of Somnium's own C# decoders
+(`DreamportLz4Frame`, `DreamportLz4Block`, `DreamportXxHash32`), checked byte for byte against them. It is not
+the reference LZ4 library's code.
+
+## This fork's decoders
+
+`src/lib.rs` exports the ABI; `src/frame.rs`, `src/block.rs` and `src/xxhash32.rs` are one Rust file per C# file
+of the decoders they translate. A frame's descriptor and every checksum it carries are checked, its blocks may be
+no larger than it declares, nothing may follow its end, and a frame or block that would write past its output is
+refused, never followed.
+
+`dp_decode` decodes with the decoder the host names: `lz4` reads one frame, `lz4block` one raw block, and any
+other name is refused (-2). A valid frame handed over as `lz4block`, or a valid raw block as `lz4`, is refused,
+as the C# decoder of that name refuses it. A frame that declares no size and holds fewer bytes than the output is refused (-1), as the ABI asks
+for exactly `out_len` bytes; the C# decoder returns the shorter length, which the host also refuses.
+
+Measured 2026-11-06 at ABI v3, in Wasmtime 48 from .NET 10, with the client's memory and time limits: byte-identical to
+the C# decoders on every LZ4 frame of a shipped Bethesda game's archives (the 12 compressed `.bsa` of Skyrim
+Special Edition: 74,616 frames, about 19 GiB decoded), on the 5,391 raw LZ4 blocks of a shipped Unity game's
+284 bundles, and on the C# suite's own inputs and damaged copies of them, refusals included.
+
+## From the base module
 
 A **module** is code a Somnium world can ask the client to use when it reads a game's files. It is
 a WebAssembly module that offers **decoders** (bytes in, bytes out), **readers** (it lists the entries of
@@ -121,12 +146,6 @@ cargo build --release --target wasm32-unknown-unknown
 
 The result is `target/wasm32-unknown-unknown/release/dream_module.wasm`. Use no crate that needs an
 import (no `wasm-bindgen`, no WASI).
-
-## The example decoder
-
-`src/lib.rs` offers the decoder `example`: it accepts an input exactly as long as the output and copies it.
-Replace `decode` with your own decoder. The example declares no reader; a reader adds `dp_list` and
-`dp_output` and reads its container through `host::Container`.
 
 ## License
 

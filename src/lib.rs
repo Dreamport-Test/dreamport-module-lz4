@@ -1,7 +1,10 @@
-//! A module: bytes in, bytes out. See README.md for the ABI. The example offers a decoder and no reader,
-//! so it imports nothing; `host` is what a reader uses to read its container.
+//! Somnium's LZ4 decoders as a WebAssembly module (ABI v4): `lz4`, one LZ4 frame, and `lz4block`, one raw LZ4 block
+//! that fills the output exactly. A translation of `dreamport/contract/Decode/DreamportLz4Frame.cs`,
+//! `DreamportLz4Block.cs` and `DreamportXxHash32.cs`. It offers no reader and imports nothing.
 
-pub mod host;
+mod block;
+mod frame;
+mod xxhash32;
 
 use std::alloc::{alloc, dealloc, Layout};
 
@@ -52,20 +55,20 @@ pub extern "C" fn dp_decode(name_ptr: u32, name_len: u32, in_ptr: u32, in_len: u
     wrote
 }
 
-/// The example decoder: an input exactly as long as the output is copied; anything else is refused. `name` is the
-/// decoder the host asks for, one of the names in `module.json`.
 fn decode(name: &[u8], input: &[u8], output: &mut [u8]) -> i64 {
-    if name != b"example" {
-        return UNSUPPORTED;
+    let wrote = match name {
+        b"lz4" => frame::into(input, output),
+        b"lz4block" => block::whole(input, output),
+        _ => return UNSUPPORTED,
+    };
+    if wrote == output.len() as i64 {
+        wrote
+    } else {
+        CORRUPT
     }
-    if input.len() != output.len() {
-        return CORRUPT;
-    }
-    output.copy_from_slice(input);
-    output.len() as i64
 }
 
-const DESCRIPTION: &[u8] = br#"{"readers":[],"decoders":["example"]}"#;
+const DESCRIPTION: &[u8] = br#"{"readers":[],"decoders":["lz4","lz4block"]}"#;
 
 /// What this module answers, in its own words: the host routes these names to it and keeps no list of its own.
 #[no_mangle]
